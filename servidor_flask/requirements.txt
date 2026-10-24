@@ -1,7 +1,14 @@
+# --- Runtime de la API ---
 flask>=3.0
 flask-cors>=4.0
-scikit-learn>=1.6
+gunicorn>=22.0
+numpy>=1.26
+scikit-learn>=1.4
 joblib>=1.4
-numpy>=2.1
+
+# --- Solo entrenamiento (modelo.py) ---
 pandas>=2.2
 matplotlib>=3.9
+
+# --- Tests ---
+pytest>=8.0

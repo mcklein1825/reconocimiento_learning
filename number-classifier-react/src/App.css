@@ -122,3 +122,8 @@
     -webkit-animation: LoaderAnimation 1s ease-in-out infinite;
     margin: 0;
 }
+/* ── Añadidos del refactor ─────────────────────────────── */
+.prediction-digit { font-size: 3rem; }
+.prediction-confidence { color: #9ab; font-size: 1rem; }
+.prediction-error { color: #e66; }
+.grid-hint { color: #89a; font-size: 0.85rem; text-align: center; }
