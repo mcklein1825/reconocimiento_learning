@@ -1,171 +1,91 @@
-// librerías
-import { useState, useEffect } from "react";
-import axios from "axios";
+// src/App.js
+// Componente contenedor: orquesta el hook de dibujo y el envío al backend.
+// Sin DOM imperativo (nada de getElementById), sin mutación de estado,
+// con estados explícitos de loading / error / resultado.
 
-// estilos
+import React, { useCallback, useState } from "react";
 import "./App.css";
 
-const ROWS = 28;
-const COLS = 28;
+import useDrawingGrid from "./hooks/useDrawingGrid";
+import { predictDigit } from "./services/api";
+import { getErrorMessage } from "./utils/errors";
+import { gridToFlatPixels } from "./constants";
 
-// Crear cuadrícula vacía
-// 0 = nodo inactivo
-// 255 = nodo activo
-const createEmptyGrid = () =>
-  Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+import DrawingGrid from "./components/DrawingGrid";
+import PredictionPanel from "./components/PredictionPanel";
 
 export default function App() {
-  // Cuadrícula 28 x 28
-  const [grid, setGrid] = useState(createEmptyGrid);
+  const { grid, isEmpty, paintCell, clear } = useDrawingGrid();
 
-  // Saber si el usuario está dibujando
-  const [isUserDrawing, setIsUserDrawing] = useState(false);
-
-  // Saber si la cuadrícula está vacía
-  const [emptyGrid, setEmptyGrid] = useState(true);
-
-  // Resultado devuelto por el servidor
-  const [resultNum, setResultNum] = useState(null);
-
-  // Estado de carga mientras envía al servidor
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [result, setResult] = useState(null);
 
-  // Si el usuario suelta el mouse fuera de la app, dejamos de dibujar
-  useEffect(() => {
-    const stopDrawing = () => setIsUserDrawing(false);
+  const handleClear = useCallback(() => {
+    clear();
+    setResult(null);
+    setError(null);
+  }, [clear]);
 
-    window.addEventListener("mouseup", stopDrawing);
-
-    return () => {
-      window.removeEventListener("mouseup", stopDrawing);
-    };
-  }, []);
-
-  const startDrawing = () => {
-    setIsUserDrawing(true);
-  };
-
-  const stopDrawing = () => {
-    setIsUserDrawing(false);
-  };
-
-  const paintNode = (rowIndex, colIndex, force = false) => {
-    // Solo pinta si el usuario está dibujando
-    // force = true se usa para pintar el primer clic
-    if (!force && !isUserDrawing) return;
-
-    if (emptyGrid) {
-      setEmptyGrid(false);
-    }
-
-    setGrid((previousGrid) => {
-      // Si ya está pintado, no hacemos nada
-      if (previousGrid[rowIndex][colIndex] === 255) {
-        return previousGrid;
-      }
-
-      // Copia inmutable de la cuadrícula
-      const newGrid = previousGrid.map((row) => [...row]);
-
-      // Pintar nodo seleccionado
-      newGrid[rowIndex][colIndex] = 255;
-
-      return newGrid;
-    });
-  };
-
-  const clearGrid = () => {
-    setGrid(createEmptyGrid());
-    setEmptyGrid(true);
-    setResultNum(null);
-  };
-
-  const sendNumber = async () => {
-    // Enviar solo si el usuario dibujó algo
-    if (emptyGrid) return;
+  const handleSend = useCallback(async () => {
+    // Validación de negocio: no enviar un lienzo vacío
+    if (isEmpty || loading) return;
 
     setLoading(true);
-
-    // Convertir matriz 28x28 en arreglo de 784 valores
-    const numArr = grid.flat();
+    setError(null);
+    setResult(null);
 
     try {
-      // Enviar arreglo al servidor Flask
-      const response = await axios.post("http://localhost:5000/", numArr);
-
-      setResultNum(response.data);
-    } catch (error) {
-      console.error("Error al enviar el número:", error);
-      setResultNum("Error");
+      // Contrato de forma validado antes de enviar (filas x columnas consistentes)
+      const pixels = gridToFlatPixels(grid);
+      const data = await predictDigit(grid);
+      setResult(data);
+    } catch (err) {
+      console.error("Error al enviar el número:", err);
+      setError(getErrorMessage(err));
     } finally {
       setLoading(false);
     }
-  };
+  }, [grid, isEmpty, loading]);
 
   return (
-    <div className="container">
+    <main className="container">
       <div className="left-container">
-        <div className="grid-container">
+        <section className="grid-container" aria-label="Área de dibujo">
           <h1 className="grid-title">Dibuja un número (0 - 9)</h1>
 
-          <div
-            className="grid-top-container"
-            onMouseUp={stopDrawing}
-            onMouseLeave={stopDrawing}
-          >
-            {grid.map((row, rowIndex) => (
-              <div className="grid-row" key={`row-${rowIndex}`}>
-                {row.map((value, colIndex) => (
-                  <div
-                    key={`node-${rowIndex}-${colIndex}`}
-                    className={
-                      value === 255 ? "node-active" : "node-inactive"
-                    }
-                    onMouseDown={(event) => {
-                      event.preventDefault();
-                      startDrawing();
-                      paintNode(rowIndex, colIndex, true);
-                    }}
-                    onMouseEnter={() => {
-                      paintNode(rowIndex, colIndex, false);
-                    }}
-                  />
-                ))}
-              </div>
-            ))}
-          </div>
+          <DrawingGrid grid={grid} onPaintCell={paintCell} />
 
           <div className="grid-bottom-container">
             <button
+              type="button"
               className="send-button"
-              onClick={sendNumber}
-              disabled={loading || emptyGrid}
+              onClick={handleSend}
+              disabled={loading || isEmpty}
+              aria-disabled={loading || isEmpty}
             >
-              ENVIAR
+              {loading ? "ENVIANDO…" : "ENVIAR"}
             </button>
 
             <button
+              type="button"
               className="clear-button"
-              onClick={clearGrid}
-              disabled={loading}
+              onClick={handleClear}
+              disabled={loading || isEmpty}
             >
               LIMPIAR
             </button>
           </div>
-        </div>
-      </div>
 
-      <div className="right-container">
-        <h1 className="grid-title">El número dibujado es:</h1>
-
-        <div className="server-response">
-          {loading ? (
-            <div className="loader-container-small" />
-          ) : (
-            resultNum
+          {isEmpty && (
+            <p className="grid-hint" role="note">
+              Dibuja algo en la cuadrícula para habilitar el envío.
+            </p>
           )}
-        </div>
+        </section>
       </div>
-    </div>
+
+      <PredictionPanel loading={loading} error={error} result={result} />
+    </main>
   );
 }
